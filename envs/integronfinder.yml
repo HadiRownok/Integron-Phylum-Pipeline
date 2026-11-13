@@ -1,0 +1,4 @@
+name: integronF
+channels: [conda-forge, bioconda]
+dependencies:
+  - integron_finder>=2.0

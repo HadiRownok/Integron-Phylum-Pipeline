@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Integron–Phylum Pipeline · link integrons in metagenomes to their host phylum</title>
+<meta name="description" content="One-command pipeline linking every integron in a metagenome to the phylum, genus and species of the contig that carries it. IntegronFinder 2 + Kraken2 + R.">
+<style>
+  :root {
+    --ink: #1d2433;
+    --muted: #5b6577;
+    --line: #e4e7ee;
+    --bg: #fbfaf7;
+    --card: #ffffff;
+    --navy: #13233f;
+    --navy-2: #1d3461;
+    --blue: #3182bd;
+    --red: #de2d26;
+    --yellow: #fec44f;
+    --radius: 14px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; color: var(--ink); background: var(--bg);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* nav */
+  nav { position: sticky; top: 0; z-index: 10; background: rgba(19,35,63,.92); backdrop-filter: blur(8px); }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 58px; }
+  nav .brand { color: #fff; font-weight: 700; letter-spacing: .2px; display: flex; align-items: center; gap: 10px; }
+  nav .dots { display: inline-flex; gap: 4px; }
+  nav .dots i { width: 9px; height: 9px; border-radius: 50%; display: block; }
+  nav ul { list-style: none; display: flex; gap: 22px; margin: 0; padding: 0; }
+  nav ul a { color: #c9d4ea; font-size: 14.5px; }
+  nav ul a:hover { color: #fff; text-decoration: none; }
+
+  /* hero */
+  header.hero {
+    background: radial-gradient(1200px 500px at 85% -10%, #2b4a85 0%, transparent 60%),
+                linear-gradient(160deg, var(--navy) 0%, var(--navy-2) 100%);
+    color: #fff; padding: 84px 0 96px;
+  }
+  .eyebrow { display: inline-block; font-size: 13px; letter-spacing: 1.4px; text-transform: uppercase;
+             color: var(--yellow); font-weight: 700; margin-bottom: 14px; }
+  header h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.12; margin: 0 0 18px; max-width: 820px; }
+  header h1 span { background: linear-gradient(90deg, var(--yellow), #ff9a76); -webkit-background-clip: text;
+                   background-clip: text; color: transparent; }
+  header p.lead { font-size: 19px; color: #c9d4ea; max-width: 720px; margin: 0 0 30px; }
+  .btns { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px;
+         font-weight: 600; font-size: 15px; transition: transform .15s ease, box-shadow .15s ease; }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); }
+  .btn.primary { background: var(--yellow); color: var(--navy); box-shadow: 0 6px 18px rgba(254,196,79,.25); }
+  .btn.ghost { border: 1px solid rgba(255,255,255,.35); color: #fff; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 30px; }
+  .chip { font-size: 13px; color: #dfe6f3; border: 1px solid rgba(255,255,255,.2); padding: 4px 11px; border-radius: 999px; }
+
+  /* figure card overlapping hero */
+  .figure-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+                 box-shadow: 0 20px 50px rgba(19,35,63,.12); padding: 22px; margin-top: -56px; position: relative; }
+  .figure-card img { width: 100%; height: auto; display: block; border-radius: 8px; }
+  .figure-card figcaption { font-size: 14px; color: var(--muted); margin-top: 12px; }
+  .legend-inline { display: inline-flex; gap: 14px; margin-left: 4px; }
+  .legend-inline b { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; color: var(--ink); }
+  .legend-inline b::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--c); }
+
+  section { padding: 76px 0 8px; }
+  h2 { font-size: 30px; line-height: 1.2; margin: 0 0 10px; }
+  .kicker { font-size: 13px; letter-spacing: 1.3px; text-transform: uppercase; color: var(--blue); font-weight: 700; }
+  .sub { color: var(--muted); max-width: 760px; margin: 0 0 30px; font-size: 17px; }
+
+  /* stats */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 34px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px;
+          border-top: 4px solid var(--c); }
+  .stat strong { display: block; font-size: 30px; line-height: 1.1; }
+  .stat span { color: var(--muted); font-size: 14px; }
+
+  /* workflow table of analyses */
+  .grid-2 { display: grid; grid-template-columns: 1.05fr .95fr; gap: 28px; align-items: start; }
+  .analyses { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .analyses div { display: grid; grid-template-columns: 1fr 1.1fr; gap: 12px; padding: 13px 18px; border-bottom: 1px solid var(--line); }
+  .analyses div:last-child { border-bottom: 0; }
+  .analyses div.head { background: #f3f5f9; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
+  .analyses div.gap { background: linear-gradient(90deg, #fff6e0, #fff); }
+  .analyses .q { font-weight: 600; }
+  .analyses .t { color: var(--muted); font-size: 15px; }
+  .callout { background: var(--navy); color: #e8eef9; border-radius: var(--radius); padding: 26px 26px 22px; }
+  .callout h3 { margin: 0 0 10px; color: #fff; font-size: 21px; }
+  .callout p { margin: 0 0 12px; color: #c9d4ea; }
+  .callout .q-big { font-size: 22px; color: var(--yellow); font-weight: 700; margin: 6px 0 14px; }
+
+  /* pipeline steps */
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; counter-reset: s; }
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 18px 18px; position: relative; }
+  .step::before { counter-increment: s; content: counter(s); position: absolute; top: -14px; left: 18px;
+                  width: 28px; height: 28px; border-radius: 50%; background: var(--c); color: #fff; font-weight: 700;
+                  display: grid; place-items: center; font-size: 14px; }
+  .step h4 { margin: 8px 0 6px; font-size: 16.5px; }
+  .step p { margin: 0; color: var(--muted); font-size: 14.5px; }
+  .step code { font-family: var(--mono); font-size: 12.5px; background: #f3f5f9; padding: 1px 6px; border-radius: 5px; color: var(--ink); }
+
+  /* features */
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .feature { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .feature .ico { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; font-size: 19px;
+                  background: var(--c); margin-bottom: 10px; }
+  .feature h4 { margin: 0 0 6px; font-size: 16.5px; }
+  .feature p { margin: 0; color: var(--muted); font-size: 14.5px; }
+
+  /* code */
+  .code { position: relative; background: #0f1a2e; color: #dfe7f5; border-radius: var(--radius); padding: 20px 22px;
+          font-family: var(--mono); font-size: 14px; line-height: 1.7; overflow-x: auto; white-space: pre; }
+  .code .c { color: #7f8ea8; }
+  .code .k { color: var(--yellow); }
+  .copy { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,.08); color: #dfe7f5;
+          border: 1px solid rgba(255,255,255,.18); border-radius: 8px; padding: 5px 10px; font-size: 12.5px; cursor: pointer; }
+  .copy:hover { background: rgba(255,255,255,.16); }
+  .opts { width: 100%; border-collapse: collapse; margin-top: 18px; background: var(--card); border: 1px solid var(--line);
+          border-radius: var(--radius); overflow: hidden; font-size: 15px; }
+  .opts th, .opts td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  .opts th { background: #f3f5f9; font-size: 13px; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); }
+  .opts td:first-child { font-family: var(--mono); font-size: 13.5px; white-space: nowrap; }
+  .opts tr:last-child td { border-bottom: 0; }
+
+  .note { border-left: 4px solid var(--yellow); background: #fffaf0; padding: 14px 18px; border-radius: 8px; color: #5a4a20; font-size: 15px; }
+  .cite { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 22px; font-size: 15px; }
+  .cite p { margin: 0 0 10px; } .cite p:last-child { margin: 0; }
+
+  footer { margin-top: 80px; background: var(--navy); color: #9fb0cc; padding: 34px 0; font-size: 14px; }
+  footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  footer a { color: #dfe7f5; }
+
+  @media (max-width: 860px) {
+    nav ul { display: none; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .grid-2 { grid-template-columns: 1fr; }
+    .steps { grid-template-columns: 1fr 1fr; row-gap: 26px; }
+    .features { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><span class="dots"><i style="background:#3182bd"></i><i style="background:#de2d26"></i><i style="background:#fec44f"></i></span>Integron–Phylum Pipeline</a>
+    <ul>
+      <li><a href="#why">Why</a></li>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#start">Get started</a></li>
+      <li><a href="#cite">Cite</a></li>
+      <li><a href="https://github.com/HadiRownok/Integron-Phylum-Pipeline">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div class="eyebrow">Metagenomics · Antimicrobial resistance · One Health</div>
+    <h1>Which bacteria carry the integrons? <span>Now one command answers it.</span></h1>
+    <p class="lead">A reproducible pipeline that links every integron in a metagenome to the phylum, genus and species of the contig that carries it, and tests which phyla carry more integrons than their abundance predicts.</p>
+    <div class="btns">
+      <a class="btn primary" href="#start">Get started →</a>
+      <a class="btn ghost" href="https://github.com/HadiRownok/Integron-Phylum-Pipeline">View on GitHub</a>
+    </div>
+    <div class="chips">
+      <span class="chip">IntegronFinder 2</span><span class="chip">Kraken2</span><span class="chip">Bash</span>
+      <span class="chip">R · ggplot2</span><span class="chip">conda</span><span class="chip">MIT license</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <figure class="figure-card">
+    <img src="figures/Fig_Integron_Phylum_Distribution.png" alt="Bar chart of integrons per phylum: Pseudomonadota 583, Bacillota 14, other phyla 41, unclassified 532">
+    <figcaption>
+      Example output: 1,170 integrons from 30 metagenomes, each assigned to the phylum of its own contig. Bar labels:
+      <span class="legend-inline"><b style="--c:#3182bd">complete</b><b style="--c:#de2d26">In0</b><b style="--c:#fec44f">CALIN</b></span>.
+      Data unpublished; aggregate counts only.
+    </figcaption>
+  </figure>
+
+  <div class="stats">
+    <div class="stat" style="--c:#3182bd"><strong>1 command</strong><span>from assembled contigs to figures</span></div>
+    <div class="stat" style="--c:#de2d26"><strong>Per integron</strong><span>phylum · genus · species of its own contig</span></div>
+    <div class="stat" style="--c:#fec44f"><strong>Statistics</strong><span>observed vs expected, FDR-corrected</span></div>
+    <div class="stat" style="--c:#7bc8a4"><strong>Reproducible</strong><span>conda envs, re-runnable, documented</span></div>
+  </div>
+</div>
+
+<section id="why">
+  <div class="wrap">
+    <div class="kicker">Why it was needed</div>
+    <h2>Metagenomics reports the pieces, but rarely connects them</h2>
+    <p class="sub">A typical metagenomic AMR study runs several analyses side by side. Each answers its own question, and the results are reported separately.</p>
+    <div class="grid-2">
+      <div class="analyses">
+        <div class="head"><span>Question</span><span>Typical tools</span></div>
+        <div><span class="q">Who is in the community?</span><span class="t">Kraken2 + Bracken, TaxonKit</span></div>
+        <div><span class="q">What can the community do?</span><span class="t">Assembly (metaSPAdes / MEGAHIT), KEGG / eggNOG</span></div>
+        <div><span class="q">Which resistance genes are present?</span><span class="t">CARD, MEGARes</span></div>
+        <div><span class="q">Which virulence factors?</span><span class="t">VFDB</span></div>
+        <div><span class="q">Which integrons and cassettes?</span><span class="t">IntegronFinder 2</span></div>
+        <div class="gap"><span class="q">Which bacteria carry the integrons?</span><span class="t"><b>This pipeline</b></span></div>
+      </div>
+      <div class="callout">
+        <h3>The missing link</h3>
+        <p>Integrons capture and spread gene cassettes, many of them antibiotic resistance genes, through horizontal gene transfer. A count of integrons does not say where resistance lives.</p>
+        <div class="q-big">Knowing their hosts reveals which bacterial groups act as reservoirs and vehicles of resistance.</div>
+        <p>Néron et al. (2022) mapped integrons across phyla using complete genomes, where the host is known. In metagenomes the host is unknown, and no ready workflow made this link. Assigning each sample's dominant taxon to all its integrons is a common shortcut; in our data it supported a phylum pattern that contig-level taxonomy did not.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="kicker">How it works</div>
+    <h2>From contigs to host-resolved integrons</h2>
+    <p class="sub">Every step is skipped automatically if it has already finished, so the pipeline is safe to re-run.</p>
+    <div class="steps">
+      <div class="step" style="--c:#3182bd"><h4>Detect integrons</h4><p>IntegronFinder 2 runs on every sample in parallel: complete, In0 and CALIN elements, attC sites, cassette proteins.</p></div>
+      <div class="step" style="--c:#de2d26"><h4>Classify host contigs</h4><p>Only integron-carrying contigs are extracted and classified in a single Kraken2 run.</p></div>
+      <div class="step" style="--c:#e6a817"><h4>Link integron ↔ taxon</h4><p>Lineage is parsed from the Kraken2 report: phylum, genus and species for every integron.</p></div>
+      <div class="step" style="--c:#2a9d8f"><h4>Tables &amp; figures</h4><p>TSV + Excel per integron, sample, phylum and genus; publication-ready R figures.</p></div>
+    </div>
+
+    <div class="features" style="margin-top:34px">
+      <div class="feature"><div class="ico" style="--c:#e8f1fa">⚖️</div><h4>Enrichment test <code style="font-size:12px">-a</code></h4><p>Kraken2 on all contigs measures each phylum's share of DNA; an exact binomial test (BH-corrected) shows which phyla carry more or fewer integrons than expected.</p></div>
+      <div class="feature"><div class="ico" style="--c:#fdecea">📊</div><h4>Ready-made figures</h4><p>Phylum distribution (with "samples with integrons"), enrichment forest plot, 5-panel overview and a summary infographic.</p></div>
+      <div class="feature"><div class="ico" style="--c:#fff5dc">🔒</div><h4>Built for unpublished data</h4><p>Sample IDs can be anonymised in figures; data and results are kept out of the repository by default.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <div class="kicker">Get started</div>
+    <h2>Install and run</h2>
+    <p class="sub">Requires conda and a Kraken2 database (Standard-16, ~11 GB, works well).</p>
+    <div class="code" id="code1"><button class="copy" data-target="code1">Copy</button><span class="c"># 1. get the code and environments</span>
+git clone https://github.com/HadiRownok/Integron-Phylum-Pipeline.git
+cd Integron-Phylum-Pipeline
+conda env create -f envs/integronfinder.yml
+conda env create -f envs/kraken2.yml
+conda env create -f envs/plotenv.yml
+
+<span class="c"># 2. run on your assembled contigs</span>
+conda activate integronF
+export PATH=~/miniconda3/envs/plotenv/bin:$PATH
+<span class="k">scripts/Integron_Phylum_Pipeline.sh</span> -k ~/db/kraken2_std16 -e kraken2 -a *_contigs.fasta</div>
+
+    <table class="opts">
+      <tr><th>Option</th><th>Meaning</th><th>Default</th></tr>
+      <tr><td>-k DIR</td><td>Kraken2 database</td><td>required</td></tr>
+      <tr><td>-e ENV</td><td>conda env containing kraken2</td><td>active env</td></tr>
+      <tr><td>-a</td><td>also run the integron–phylum enrichment analysis</td><td>off</td></tr>
+      <tr><td>-o DIR</td><td>output folder</td><td>Integron_Phylum_results</td></tr>
+      <tr><td>-r DIR</td><td>reuse existing IntegronFinder results</td><td>–</td></tr>
+      <tr><td>-c / -j N</td><td>CPUs per run / samples in parallel</td><td>8 / 4</td></tr>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="kicker">Good to know</div>
+    <h2>Limitations</h2>
+    <div class="note">Short contigs are often unclassified (in our data, median ~0.8 kb vs ~1.5 kb for classified ones). The taxonomy reported is that of the contig carrying each integron, the best available proxy for its host in a metagenome. Enrichment uses classified DNA only; report the classified fraction alongside results.</div>
+  </div>
+</section>
+
+<section id="cite">
+  <div class="wrap">
+    <div class="kicker">Citation</div>
+    <h2>Please cite the tools it builds on</h2>
+    <div class="cite">
+      <p>Néron B., Littner E., Haudiquet M., Perrin A., Cury J., Rocha E.P.C. (2022). IntegronFinder 2.0: identification and analysis of integrons across Bacteria, with a focus on antibiotic resistance in <i>Klebsiella</i>. <i>Microorganisms</i> 10(4):700. <a href="https://doi.org/10.3390/microorganisms10040700">doi:10.3390/microorganisms10040700</a></p>
+      <p>Wood D.E., Lu J., Langmead B. (2019). Improved metagenomic analysis with Kraken 2. <i>Genome Biology</i> 20:257. <a href="https://doi.org/10.1186/s13059-019-1891-0">doi:10.1186/s13059-019-1891-0</a></p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Integron–Phylum Pipeline · MIT license · The metagenomic data used in development are unpublished and confidential.</span>
+    <a href="https://github.com/HadiRownok/Integron-Phylum-Pipeline">Source on GitHub →</a>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll('.copy').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var box = document.getElementById(b.dataset.target).cloneNode(true);
+      box.querySelector('.copy').remove();
+      navigator.clipboard.writeText(box.innerText.trim()).then(function () {
+        b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500);
+      });
+    });
+  });
+</script>
+</body>
+</html>
