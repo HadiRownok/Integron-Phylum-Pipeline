@@ -63,7 +63,7 @@
 
   /* figure card overlapping hero */
   .figure-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-                 box-shadow: 0 20px 50px rgba(19,35,63,.12); padding: 22px; margin-top: -56px; position: relative; }
+                 box-shadow: 0 20px 50px rgba(19,35,63,.12); padding: 22px; margin-top: -56px; position: relative; z-index: 3; }
   .figure-card img { width: 100%; height: auto; display: block; border-radius: 8px; }
   .figure-card figcaption { font-size: 14px; color: var(--muted); margin-top: 12px; }
   .legend-inline { display: inline-flex; gap: 14px; margin-left: 4px; }
@@ -143,6 +143,43 @@
     .grid-2 { grid-template-columns: 1fr; }
     .steps { grid-template-columns: 1fr 1fr; row-gap: 26px; }
     .features { grid-template-columns: 1fr; }
+  }
+
+  /* ---------- motion ---------- */
+  header.hero { position: relative; overflow: hidden; }
+  header.hero .wrap { position: relative; z-index: 2; }
+  /* hover: lift + glow */
+  .stat, .step, .feature, .cite, .analyses, .callout {
+    transition: transform .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease, border-color .28s ease; }
+  .stat:hover, .step:hover, .feature:hover {
+    transform: translateY(-8px); box-shadow: 0 18px 40px rgba(19,35,63,.13); border-color: transparent; }
+  .step:hover::before { transform: scale(1.15); }
+  .step::before { transition: transform .28s ease; }
+  .feature { position: relative; overflow: hidden; }
+  .feature::after { content: ""; position: absolute; left: 0; top: 0; height: 3px; width: 0;
+                    background: linear-gradient(90deg, #3182bd, #de2d26, #fec44f); transition: width .4s ease; }
+  .feature:hover::after { width: 100%; }
+  .feature:hover .ico { transform: rotate(-8deg) scale(1.12); }
+  .feature .ico { transition: transform .3s ease; }
+  .analyses div:not(.head) { transition: background .2s ease, padding-left .2s ease; }
+  .analyses div:not(.head):hover { background: #f6f8fc; padding-left: 26px; }
+  .callout:hover { transform: translateY(-6px); box-shadow: 0 22px 48px rgba(19,35,63,.28); }
+  .figure-card { transition: box-shadow .35s ease; }
+  .figure-card img { transition: transform .6s cubic-bezier(.2,.8,.2,1); }
+  .figure-card:hover { box-shadow: 0 28px 60px rgba(19,35,63,.18); }
+  .figure-card:hover img { transform: scale(1.025); }
+  .chip { transition: background .2s ease, transform .2s ease; }
+  .chip:hover { background: rgba(255,255,255,.12); transform: translateY(-2px); }
+  .opts tr { transition: background .2s ease; }
+  .opts tr:hover td { background: #f8fafc; }
+
+  /* reveal on scroll */
+  .reveal { opacity: 0; transform: translateY(28px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.8,.2,1); }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .reveal { opacity: 1; transform: none; }
   }
 </style>
 </head>
@@ -296,6 +333,15 @@ export PATH=~/miniconda3/envs/plotenv/bin:$PATH
 </footer>
 
 <script>
+  (function () {
+    var els = document.querySelectorAll('.figure-card, .stat, .analyses, .callout, .step, .feature, .code, .opts, .note, .cite, section h2, section .sub');
+    els.forEach(function (el, i) { el.classList.add('reveal'); el.style.transitionDelay = ((i % 4) * 80) + 'ms'; });
+    if (!('IntersectionObserver' in window)) { els.forEach(function (el) { el.classList.add('in'); }); return; }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    els.forEach(function (el) { io.observe(el); });
+  })();
   document.querySelectorAll('.copy').forEach(function (b) {
     b.addEventListener('click', function () {
       var box = document.getElementById(b.dataset.target).cloneNode(true);
